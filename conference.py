@@ -16,6 +16,8 @@ import calendar
 import time
 from datetime import datetime
 
+import logging
+
 import endpoints
 import operator
 
@@ -75,16 +77,16 @@ OPERATORS = {
     'EQ': '=',
     'GT': '>',
     'GTEQ': '>=',
-            'LT': '<',
-            'LTEQ': '<=',
-            'NE': '!='
+    'LT': '<',
+    'LTEQ': '<=',
+    'NE': '!='
 }
 
 FIELDS = {
     'CITY': 'city',
-            'TOPIC': 'topics',
-            'MONTH': 'month',
-            'MAX_ATTENDEES': 'maxAttendees',
+    'TOPIC': 'topics',
+    'MONTH': 'month',
+    'MAX_ATTENDEES': 'maxAttendees',
 }
 
 CONF_GET_REQUEST = endpoints.ResourceContainer(
@@ -288,31 +290,25 @@ class ConferenceApi(remote.Service):
             raise endpoints.UnauthorizedException('Authorization required')
         user_id = getUserId(user)
 
-        conf_counts = {}
         session_keys = [
             wl.sessionKey for wl in SessionWishlistItem.query(
                 SessionWishlistItem.userId == user_id)]
 
-        for cs in ConferenceSession.query():
-            if cs.key.urlsafe() in session_keys:
-                pkey = cs.key.parent().urlsafe()
-                if pkey in conf_counts:
-                    conf_counts[pkey] += 1
-                else:
-                    conf_counts[pkey] = 1
+        conf_keys = [ndb.Key(urlsafe=k).parent().urlsafe() for k in session_keys]
+
+        conf_counts = {}
+        for ck in conf_keys:
+            if ck in conf_counts:
+                conf_counts[ck] += 1
+            else:
+                conf_counts[ck] = 1
+
         confs = []
-        for (
-                key,
-                val) in sorted(
-                conf_counts.items(),
-                key=operator.itemgetter(1)):
-            confs.append(
-                ConferenceWithWishlistSession(
-                    conference=self._copyConferenceToForm(
-                        ndb.Key(
-                            urlsafe=key).get(),
-                        None),
-                    wishlistedSessions=val))
+        for (k,v) in sorted(conf_counts.items(), key=operator.itemgetter(1)):
+            confs.append(ConferenceWithWishlistSession(
+                conference=self._copyConferenceToForm(
+                    ndb.Key(urlsafe=k).get(), None),
+                wishlistedSessions=v))
 
         return ConferencesWithWishlistSessionResponse(
             conferences=list(reversed(confs))
@@ -570,32 +566,37 @@ class ConferenceApi(remote.Service):
 
     @staticmethod
     def _updateFeaturedSpeaker(speaker, conferenceKey):
-        q = ConferenceSession.query(ConferenceSession.speaker == speaker)
+        """Updates the featured speaker in memcache."""
+        if ndb.Key(urlsafe=request.conferenceKey).kind() != "Conference":
+            raise endpoints.NotFoundException(
+                'No conference found with key: %s' % request.conferenceKey)
+
+        q = ConferenceSession.query(ancestor == ndb.Key(
+                                        urlsafe=conferenceKey))
+
+        q = q.filter(ConferenceSession.speaker == speaker)
+
         if q.count() > 1:
             fskey = 'featuredSpeaker-' + conferenceKey
-            memcache.set(fskey,
-                         "{0}+++{1}".format(speaker,
-                                            "|||".join([qi.name for qi in q])))
+            memcache.set(fskey, (speaker, [qi.name for qi in q]))
 
     @endpoints.method(GET_CONF_SPEAKERS_REQ, GetConferenceSpeakersResponse,
                       path='getConferenceSpeakers',
                       http_method='GET', name='getConferenceSpeakers')
     def getConferenceSpeakers(self, request):
         """Gets all speakers at the desired conference."""
-        conf = ndb.Key(urlsafe=request.conferenceKey).get()
-        if not conf:
+        if ndb.Key(urlsafe=request.conferenceKey).kind() != "Conference":
             raise endpoints.NotFoundException(
                 'No conference found with key: %s' % request.conferenceKey)
 
         q = ConferenceSession.query(
             ancestor=ndb.Key(
                 urlsafe=request.conferenceKey))
-        speakers = set()
-        for cs in q:
-            speakers.add(cs.speaker)
+        
+        q = q.fetch(projection=[ConferenceSession.speaker])
 
         return GetConferenceSpeakersResponse(
-            speakers=list(speakers)
+            speakers=list({s.speaker for s in q})
         )
 
     @endpoints.method(GET_FEATURED_SPEAKER_REQ, GetFeaturedSpeakerResponse,
@@ -604,8 +605,7 @@ class ConferenceApi(remote.Service):
     def getFeaturedSpeaker(self, request):
         """Gets the featured speaker for the desired conference."""
 
-        conf = ndb.Key(urlsafe=request.conferenceKey).get()
-        if not conf:
+        if ndb.Key(urlsafe=request.conferenceKey).kind() != "Conference":
             raise endpoints.NotFoundException(
                 'No conference found with key: %s' % request.conferenceKey)
 
@@ -628,10 +628,7 @@ class ConferenceApi(remote.Service):
                     speakers[cs.speaker] = [cs.name]
 
             if featuredSpeaker:
-                cachedSpeaker = "{0}+++{1}".format(
-                    featuredSpeaker,
-                    "|||".join(
-                        speakers[featuredSpeaker]))
+                cachedSpeaker = (featuredSpeaker, speakers[featuredSpeaker])
                 memcache.set(
                     'featuredSpeaker-' +
                     request.conferenceKey,
@@ -639,9 +636,8 @@ class ConferenceApi(remote.Service):
 
         response = GetFeaturedSpeakerResponse()
         if cachedSpeaker:
-            contents = cachedSpeaker.split("+++")
             response.speaker = contents[0]
-            response.sessionNames = contents[1].split("|||")
+            response.sessionNames = contents[1]
 
         return response
 
@@ -777,10 +773,11 @@ class ConferenceApi(remote.Service):
 
         # check that conference exists
         confKey = ndb.Key(urlsafe=request.conferenceKey)
-        conf = confKey.get()
-        if not conf:
+        if confKey.kind() != "Conference":
             raise endpoints.NotFoundException(
                 'No conference found with key: %s' % request.conferenceKey)
+
+        conf = confKey.get()
 
         # check that user is owner
         if user_id != conf.organizerUserId:
@@ -814,8 +811,8 @@ class ConferenceApi(remote.Service):
                       name='getSessionsBySpeaker')
     def getSessionsBySpeaker(self, request):
         """Retrieves sessions matching the request query"""
-        q = ConferenceSession.query()
-        q = q.filter(ConferenceSession.speaker == request.speaker)
+        q = ConferenceSession.query(
+            ConferenceSession.speaker == request.speaker)
 
         return ConferenceSessionForms(
             items=[self._copyConferenceSessionToForm(cs) for cs in q]
@@ -901,10 +898,11 @@ class ConferenceApi(remote.Service):
 
         # check that session exists
         sessionKey = ndb.Key(urlsafe=request.sessionKey)
-        csession = sessionKey.get()
-        if not csession:
+        if sessionKey.kind() != "ConferenceSession":
             raise endpoints.NotFoundException(
                 'No session found with key: %s' % request.sessionKey)
+
+        csession = sessionKey.get()
 
         q = SessionWishlistItem.query()
         q = q.filter(SessionWishlistItem.userId == user_id)
@@ -937,10 +935,7 @@ class ConferenceApi(remote.Service):
         session_keys = [
             wl.sessionKey for wl in SessionWishlistItem.query(
                 SessionWishlistItem.userId == user_id)]
-        wl_sessions = []
-        for cs in ConferenceSession.query():
-            if cs.key.urlsafe() in session_keys:
-                wl_sessions.append(cs)
+        wl_sessions = [ndb.Key(urlsafe=k).get() for k in session_keys]
 
         return ConferenceSessionForms(
             items=[self._copyConferenceSessionToForm(cs) for cs in wl_sessions]

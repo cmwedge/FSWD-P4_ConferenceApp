@@ -21,10 +21,12 @@ requisite fields, a createdTime field was added which stores the number of ticks
 since the epoch. This is useful in some queries, such as the getFeaturedSpeaker() 
 endpoint.
 
-Wishlisting a session does not require the user be signed up for the conferenec in
-which that session exists. This is done so that a user can use wishlisted sessions
-as a decision point in whether to attend a conference. This decision also drives
-one of the queries created as part of Task 3, explained later.
+Wishlists are implemented as userId / sessionKey pairs, analogous to a junction table
+in traditional relational database design, and stored as SessionWishlistItem
+entities in the DataStore. Wishlisting a session does not require the user be signed up 
+for the conferenec in which that session exists. This is done so that a user can use 
+wishlisted sessions as a decision point in whether to attend a conference. This decision
+also drives one of the queries created as part of Task 3, explained later.
 
 Speakers are represented as strings. This can lead to the possibility of ambiguity
 if more than one speaker with the same name is scheduled to speak at a conference,

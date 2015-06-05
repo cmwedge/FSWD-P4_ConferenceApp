@@ -99,3 +99,8 @@ indexes:
   ancestor: yes
   properties:
   - name: createdTime
+
+- kind: ConferenceSession
+  ancestor: yes
+  properties:
+  - name: speaker

@@ -136,14 +136,14 @@ class ConferenceQueryForms(messages.Message):
 class ConferenceSession(ndb.Model):
 
     """ConferenceSession -- ConferenceSession object"""
-    name = ndb.StringProperty()
+    name = ndb.StringProperty(required=True)
     highlights = ndb.StringProperty()
-    speaker = ndb.StringProperty()
-    duration = ndb.IntegerProperty()
-    typeOfSession = ndb.StringProperty()
-    date = ndb.DateProperty()
-    startTime = ndb.StringProperty()
-    createdTime = ndb.IntegerProperty()
+    speaker = ndb.StringProperty(required=True)
+    duration = ndb.IntegerProperty(required=True)
+    typeOfSession = ndb.StringProperty(required=True)
+    date = ndb.DateProperty(required=True)
+    startTime = ndb.StringProperty(required=True)
+    createdTime = ndb.IntegerProperty(required=True)
 
 
 class ConferenceSessionCreatedResponse(messages.Message):
@@ -183,8 +183,8 @@ class ConferenceSessionForms(messages.Message):
 class SessionWishlistItem(ndb.Model):
 
     """Class representing a wishlisted session."""
-    userId = ndb.StringProperty()
-    sessionKey = ndb.StringProperty()
+    userId = ndb.StringProperty(required=True)
+    sessionKey = ndb.StringProperty(required=True)
 
 
 class GetFeaturedSpeakerResponse(messages.Message):
