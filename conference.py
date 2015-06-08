@@ -567,11 +567,13 @@ class ConferenceApi(remote.Service):
     @staticmethod
     def _updateFeaturedSpeaker(speaker, conferenceKey):
         """Updates the featured speaker in memcache."""
-        if ndb.Key(urlsafe=request.conferenceKey).kind() != "Conference":
-            raise endpoints.NotFoundException(
-                'No conference found with key: %s' % request.conferenceKey)
 
-        q = ConferenceSession.query(ancestor == ndb.Key(
+        conf = ndb.Key(urlsafe=conferenceKey)
+        if conf.kind() != "Conference" or not conf.get():
+            raise endpoints.NotFoundException(
+                'No conference found with key: %s' % conferenceKey)
+
+        q = ConferenceSession.query(ancestor=ndb.Key(
                                         urlsafe=conferenceKey))
 
         q = q.filter(ConferenceSession.speaker == speaker)
@@ -585,7 +587,9 @@ class ConferenceApi(remote.Service):
                       http_method='GET', name='getConferenceSpeakers')
     def getConferenceSpeakers(self, request):
         """Gets all speakers at the desired conference."""
-        if ndb.Key(urlsafe=request.conferenceKey).kind() != "Conference":
+
+        conf = ndb.Key(urlsafe=request.conferenceKey)
+        if conf.kind() != "Conference" or not conf.get():
             raise endpoints.NotFoundException(
                 'No conference found with key: %s' % request.conferenceKey)
 
@@ -605,7 +609,8 @@ class ConferenceApi(remote.Service):
     def getFeaturedSpeaker(self, request):
         """Gets the featured speaker for the desired conference."""
 
-        if ndb.Key(urlsafe=request.conferenceKey).kind() != "Conference":
+        conf = ndb.Key(urlsafe=request.conferenceKey)
+        if conf.kind() != "Conference" or not conf.get():
             raise endpoints.NotFoundException(
                 'No conference found with key: %s' % request.conferenceKey)
 
@@ -773,7 +778,7 @@ class ConferenceApi(remote.Service):
 
         # check that conference exists
         confKey = ndb.Key(urlsafe=request.conferenceKey)
-        if confKey.kind() != "Conference":
+        if confKey.kind() != "Conference" or not confKey.get():
             raise endpoints.NotFoundException(
                 'No conference found with key: %s' % request.conferenceKey)
 
@@ -898,7 +903,7 @@ class ConferenceApi(remote.Service):
 
         # check that session exists
         sessionKey = ndb.Key(urlsafe=request.sessionKey)
-        if sessionKey.kind() != "ConferenceSession":
+        if sessionKey.kind() != "ConferenceSession" or not sessionKey.get():
             raise endpoints.NotFoundException(
                 'No session found with key: %s' % request.sessionKey)
 
