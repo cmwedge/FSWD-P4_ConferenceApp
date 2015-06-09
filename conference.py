@@ -617,32 +617,11 @@ class ConferenceApi(remote.Service):
         cachedSpeaker = memcache.get(
             'featuredSpeaker-' +
             request.conferenceKey)
-        if not cachedSpeaker:
-            q = ConferenceSession.query(
-                ancestor=ndb.Key(
-                    urlsafe=request.conferenceKey))
-            q = q.order(ConferenceSession.createdTime)
-
-            featuredSpeaker = None
-            speakers = {}
-            for cs in q:
-                if cs.speaker in speakers:
-                    featuredSpeaker = cs.speaker
-                    speakers[cs.speaker].append(cs.name)
-                else:
-                    speakers[cs.speaker] = [cs.name]
-
-            if featuredSpeaker:
-                cachedSpeaker = (featuredSpeaker, speakers[featuredSpeaker])
-                memcache.set(
-                    'featuredSpeaker-' +
-                    request.conferenceKey,
-                    cachedSpeaker)
 
         response = GetFeaturedSpeakerResponse()
         if cachedSpeaker:
-            response.speaker = contents[0]
-            response.sessionNames = contents[1]
+            response.speaker = cachedSpeaker[0]
+            response.sessionNames = cachedSpeaker[1]
 
         return response
 
